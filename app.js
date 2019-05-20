@@ -1,8 +1,7 @@
 const express = require('express')
 const app = express()
+var expressWs = require('express-ws')(app);
 var bcrypt = require('bcryptjs');
-var Promise = require("bluebird");
-
 
 var requirejs = require('requirejs');
 var pgp = require('pg-promise')()
@@ -47,11 +46,9 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
     })
 
 
-  const wss = new WebSocket.Server({ port: 8080 })
-
-  wss.on('connection', ws => {
+  app.ws('/', function(ws, req) {
     console.log("Connection!");
-    ws.on('message', message => {
+    ws.on('message', function(message) {
       console.log(`Received message => ${message}`);
       var q = JSON.parse(message);
       
