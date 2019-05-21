@@ -6,6 +6,64 @@ var bcrypt = require('bcryptjs');
 var requirejs = require('requirejs');
 var pgp = require('pg-promise')()
 
+var passport = require('passport');
+var Strategy = require('passport-local').Strategy;
+var bodyParser = require('body-parser');
+var ensureLoggedIn = require('connect-ensure-login').ensureLoggedIn;
+
+var cn = {
+  host: 'localhost', // 'localhost' is the default
+  port: 5432, // 5432 is the default;
+  database: 'takdb',
+  user: 'takserver3',
+  password: 'defaultpass'
+};
+
+var db = pgp(cn);
+// will be set at `req.user` in route handlers after authentication.
+passport.use(new Strategy(
+  function(username, password, done) {
+    db.one('SELECT * from login where username = $1', username)
+    .then(function (logindata) {
+      console.log('DATA:', logindata.passhash)
+      return bcrypt.compare(password, logindata.passhash);
+    })
+    .then(function (res) {
+      if (!res) {
+        throw "Invalid password";
+      }
+      console.log("Login succesful for", username);
+      return done(null, username);
+    })
+    .catch(function (error) {
+      console.log('ERROR:', error)
+      return done(error);
+    });
+}));
+app.use(require('express-session')({
+  secret: '123',
+  cookie: {
+      maxAge: 1000 * 60 * 60 * 24 * 7 // 1 week
+  },
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false } // Remember to set this
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+// The local strategy require a `verify` function which receives the credentials
+// (`username` and `password`) submitted by the user.  The function must verify
+// that the password is correct and then invoke `cb` with a user object, which
+
+passport.serializeUser(function(user, done) {
+  done(null, user);
+});
+ 
+passport.deserializeUser(function(user, done) {
+  done(null, user);
+});
+
 requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], function(Game, Board, Move) {
   // var x = new Board();
   // global.app = x;
@@ -16,17 +74,10 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   // x.last(false, true);
   console.log("Loaded ptn module");
 
-  var cn = {
-      host: 'localhost', // 'localhost' is the default
-      port: 5432, // 5432 is the default;
-      database: 'takdb',
-      user: 'takserver3',
-      password: 'defaultpass'
-  };
 
-  var db = pgp(cn);
   // var db = pgp('postgres://takserver3:defaultpass@localhost:5432/takdb');
   const port = 3000
+  app.use(bodyParser.urlencoded({extended:true}));
 
   var hash = bcrypt.hashSync('mypass', 10);
   var res = bcrypt.compareSync("mypass", hash);
@@ -36,17 +87,17 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   })
 
   db.one('SELECT * from login where username = $1', 'henk')
-    .then(function (data) {
-      console.log('DATA:', data.passhash)
-      var res = bcrypt.compareSync("myp1ass", data.passhash);
-      console.log(`DB Result: ${res}`);
-    })
-    .catch(function (error) {
-      console.log('ERROR:', error)
-    })
+  .then(function (data) {
+    console.log('DATA:', data.passhash)
+    var res = bcrypt.compareSync("myp1ass", data.passhash);
+    console.log(`DB Result: ${res}`);
+  })
+  .catch(function (error) {
+    console.log('ERROR:', error)
+  })
 
 
-  app.ws('/', function(ws, req) {
+  app.ws('/', passport.authenticate('local', { failureRedirect: '/error' }), function(ws, req) {
     console.log("Connection!");
     ws.on('message', function(message) {
       console.log(`Received message => ${message}`);
@@ -102,7 +153,70 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
     })
     ws.send('ho!')
   })
+  app.get('/bka',
+  function(req, res) {
+    res.render('home', { user: req.user });
+  });
 
+  app.get('/error', (req, res) => {
+    res.send('Error; not logged in!')
+  })
+app.get('/login',
+  function(req, res){
+    res.send('<form action="/login23" method="post">\n<div>\n<label>Username:</label>\n<input type="text" name="username" id="username"/><br/>\n</div>\n<div>\n<label>Password:</label>\n<input type="password" name="password" id="password"/>\n</div>\n<div>\n<input type="submit" value="Submit"/>\n</div>\n</form>');
+  });
+  app.get('/failed',
+  function(req, res){
+    res.send('isAuthenticated: ' + req.isAuthenticated());
+  });
+app.post('/login23', 
+passport.authenticate('local', { failureRedirect: '/error' }),
+  function(req, res) {
+    var adasd = req.body;
+    res.redirect('/profile');
+  });
+
+  // app.post('/login23', function(req, res, next) {
+  //   passport.authenticate('local', function(err, user, info) {
+  //     if (err) { return next(err); }
+  //     if (!user) { return res.redirect('/login'); }
+  //     req.logIn(user, function(err) {
+  //       if (err) { return next(err); }
+  //       return res.redirect('/users/' + user.username);
+  //     });
+  //   })(req, res, next);
+  // });
+
+// app.post('/login23', 
+//   function(request, response, next) {
+//     console.log(request.session)
+//     passport.authenticate('local', 
+//     function(err, user, info) {
+//       if(!user){ response.send(info.message);}
+//       else{
+//         request.login(user, function(error) {
+//             if (error) return next(error);
+//             console.log("Request Login supossedly successful.");
+//             return response.send('Login successful');
+//         });
+//         //response.send('Login successful');
+//       }
+
+//     })(request, response, next);
+//   }
+// );
+app.get('/logout',
+  function(req, res){
+    req.logout();
+    res.redirect('/bka');
+  });
+
+app.get('/profile',
+  ensureLoggedIn('/failed') ,
+  function(req, res){
+    res.send("Great success!");
+    // res.render('profile', { user: req.user });
+});
 
   app.listen(port, () => console.log(`Example app listening on port ${port}!`))
 });
