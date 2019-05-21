@@ -82,9 +82,6 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   var hash = bcrypt.hashSync('mypass', 10);
   var res = bcrypt.compareSync("mypass", hash);
   console.log(`Result: ${res}, ${hash}`);
-  app.get('/', (req, res) => {
-    res.send('Hello World!')
-  })
 
   db.one('SELECT * from login where username = $1', 'henk')
   .then(function (data) {
@@ -96,9 +93,15 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
     console.log('ERROR:', error)
   })
 
-
-  app.ws('/', passport.authenticate('local', { failureRedirect: '/error' }), function(ws, req) {
-    console.log("Connection!");
+  // app.get('/', (req, res) => {
+  //   // res.send('Hello World!')
+  //   res.redirect('/index.html');
+  // })
+  app.ws('/mysocket',
+  ensureLoggedIn('/login'),
+   function(ws, req) {
+    console.log("Connection! authenticated = " + req.isAuthenticated());
+    
     ws.on('message', function(message) {
       console.log(`Received message => ${message}`);
       var q = JSON.parse(message);
@@ -155,7 +158,7 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   })
   app.get('/bka',
   function(req, res) {
-    res.render('home', { user: req.user });
+    res.send("authenticated = " + req.isAuthenticated());
   });
 
   app.get('/error', (req, res) => {
@@ -173,7 +176,7 @@ app.post('/login23',
 passport.authenticate('local', { failureRedirect: '/error' }),
   function(req, res) {
     var adasd = req.body;
-    res.redirect('/profile');
+    res.redirect('/index.html');
   });
 
   // app.post('/login23', function(req, res, next) {
@@ -216,6 +219,16 @@ app.get('/profile',
   function(req, res){
     res.send("Great success!");
     // res.render('profile', { user: req.user });
+});
+
+app.get(/^(.+)$/, 
+  ensureLoggedIn('/login') ,
+  function(req, res)
+{ 
+  console.log('static file request : ' + req.params);
+  var f = '/home/sander/workspace/tak-async/PTN-Ninja/' + req.params[0];
+  console.log('Serving' + f);
+  res.sendfile(f); 
 });
 
   app.listen(port, () => console.log(`Example app listening on port ${port}!`))
