@@ -2,10 +2,8 @@ const express = require('express')
 const app = express()
 var expressWs = require('express-ws')(app);
 var bcrypt = require('bcryptjs');
-
 var requirejs = require('requirejs');
 var pgp = require('pg-promise')()
-
 var passport = require('passport');
 var Strategy = require('passport-local').Strategy;
 var bodyParser = require('body-parser');
@@ -144,7 +142,8 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
           console.log(game.print_text());
           throw 'Invalid move attempt';
         }
-        return db.none('UPDATE games set ptn=$1 where gameID=$2', [game.print_text(), q.gameID]);
+        var next_player = game.plys.length % 2 == 0 ? gamedata.player1 : gamedata.player2;
+        return db.none('UPDATE games set ptn=$1, active_player=$2 where gameID=$3', [game.print_text(), next_player, q.gameID]);
       })
       .catch(function (error) {
         console.log('ERROR for ' + q.username + ': ', error);
@@ -156,7 +155,7 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   ensureLoggedIn('/login') ,
   function(req, res) {
     console.log(`getgame for ${req.user} with id ${req.query.id}`);
-    db.one('SELECT * FROM games WHERE (active_player=$1 OR active_player=$1) AND gameID=$2', [req.user, req.query.id])
+    db.one('SELECT * FROM games WHERE (player1=$1 OR player2=$1) AND gameID=$2', [req.user, req.query.id])
     .then(function (gamedata) {
       res.send(JSON.stringify({ptn: gamedata.ptn}));
     });
