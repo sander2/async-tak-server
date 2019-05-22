@@ -107,24 +107,22 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   var allSockets = [];
   app.ws('/mysocket',
    function(ws, req) {
-    ws.user = req.user;
-    allSockets.push(ws);
-    ws.on('close', function() {
-      console.log('The connection was closed!');
-      allSockets.splice(allSockets.findIndex(x => x == ws));
-    });
-    ws.on('error', function() {
-      console.log('The connection was errored!');
-    });
     if (!req.isAuthenticated()) {
       console.log("Dropping unauthenticated websocket!");
-      // ws.send('Not authenticated!', 401);
       ws.close(1008); // Policy Violation error code
-      return;
+    } else {
+      ws.user = req.user;
+      allSockets.push(ws);
+
+      ws.on('close', function() {
+        console.log('The connection was closed!');
+        allSockets.splice(allSockets.findIndex(x => x == ws));
+      });
+      ws.on('error', function() {
+        console.log('The connection was errored!');
+        allSockets.splice(allSockets.findIndex(x => x == ws));
+      });
     }
-    ws.on('message', function(message) {
-      
-    })
   });
 
 
@@ -157,13 +155,18 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
           console.log(game.print_text());
           throw 'Invalid move attempt';
         }
+
         var next_player = game.plys.length % 2 == 0 ? gamedata.player1 : gamedata.player2;
-        var opponent = gamedata.player1 != req.user ? gamedata.player1 : gamedata.player2;
+        var thisplayer  = gamedata.player1 == req.user ? gamedata.player1 : gamedata.player2;
+        var opponent    = gamedata.player1 != req.user ? gamedata.player1 : gamedata.player2;
+
+        var ret = db.none('UPDATE games set ptn=$1, active_player=$2 where gameID=$3', [game.print_text(), next_player, q.gameID]);
+
         var other = allSockets.find(x => x.user == opponent);
         if (!_.isUndefined(other)) {
-          other.send("Notification!!!");
+          other.send(JSON.stringify({opponent:thisplayer, gameID:q.gameID}));
         }
-        return db.none('UPDATE games set ptn=$1, active_player=$2 where gameID=$3', [game.print_text(), next_player, q.gameID]);
+        return ret;
       })
       .catch(function (error) {
         console.log('ERROR for ' + q.username + ': ', error);
