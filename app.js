@@ -82,15 +82,21 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   var res = bcrypt.compareSync("mypass", hash);
   console.log(`Result: ${res}, ${hash}`);
 
-  db.one('SELECT * from login where username = $1', 'henk')
-  .then(function (data) {
-    console.log('DATA:', data.passhash)
-    var res = bcrypt.compareSync("myp1ass", data.passhash);
-    console.log(`DB Result: ${res}`);
-  })
-  .catch(function (error) {
-    console.log('ERROR:', error)
-  })
+
+  // bcrypt.hash('mypass2', 10, function(err, hash) {
+  //   db.one('INSERT INTO login (username, passhash) VALUES ($1, $2)', ['q', hash])
+  //   .then(function (gamedata) {});
+  // })
+
+  // db.one('SELECT * from login where username = $1', 'henk')
+  // .then(function (data) {
+  //   console.log('DATA:', data.passhash)
+  //   var res = bcrypt.compareSync("myp1ass", data.passhash);
+  //   console.log(`DB Result: ${res}`);
+  // })
+  // .catch(function (error) {
+  //   console.log('ERROR:', error)
+  // })
 
   // app.get('/', (req, res) => {
   //   // res.send('Hello World!')
