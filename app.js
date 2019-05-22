@@ -76,6 +76,7 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
 
   // var db = pgp('postgres://takserver3:defaultpass@localhost:5432/takdb');
   const port = 3000
+  app.use(bodyParser.json());
   app.use(bodyParser.urlencoded({extended:true}));
 
   var hash = bcrypt.hashSync('mypass', 10);
@@ -104,9 +105,7 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   // })
 
   var allSockets = [];
-
   app.ws('/mysocket',
-  // ensureLoggedIn('/login'),
    function(ws, req) {
     ws.user = req.user;
     allSockets.push(ws);
@@ -124,8 +123,16 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
       return;
     }
     ws.on('message', function(message) {
-      console.log(`Received message from ${req.user}: ${message}`);
-      var q = JSON.parse(message);
+      
+    })
+  });
+
+
+  app.post('/domove',
+    ensureLoggedIn('/login'),
+    function(req, res) {
+      console.log(`Received move from ${req.user}`);
+      var q = req.body;
       
       db.one('SELECT * FROM games WHERE active_player=$1 AND gameID=$2', [req.user, q.gameID])
       .then(function (gamedata) {
@@ -133,12 +140,9 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
         global.app = x;
         var game = new Game(x);
         x.init(game);
-        // game.parse('[Site "PlayTak.com"]\n[Event "Online Play"]\n[Date "2018.09.19"]\n[Time "21:22:37"]\n[Player1 "Whitez"]\n[Player2 "Blackz"]\n[Clock "10:0 +20"]\n[Result "R-0"]\n[Size "6"]\n1. a1 a1\n2. d3 e5\n3. e3 d5\n4. f3 c5\n5. c3 b3\n6. c2 b2\n7. c1 b5\n8. f4 f5\n9. 1f6-1 f6\n10. Ce6 1b2>1\n11. d2 a5\n12. 2f5<2 Ce4\n13. 1e6-1 d4\n14. d1 1e4-1\n15. c4 b4\n16. c6 2e3<2\n17. f2 e4\n18. f5 e6\n19. 1c6-1 b2\n20. f1 1e4>1\n21. c6 2c2+2\n22. 1c4-1 3d3<3\n23. b6 a2\n24. 1b6-1 c4\n25. 2c5-2 d3\n26. 3c4>3 a4\n27. a6 a3\n28. 4e5<31 e4\n29. e3 1e4-1\n30. 1f5-1 2e3>2\n31. 2f4-2 1d3+1\n32. 4d5-4 d5\n33. 5d4+5 d3\n34. 4f3<13 R-0');
 
         game.parse(gamedata.ptn);
-       // console.log('Found0', q ? 'Valid' : 'Invalid', game);
 
-        // console.log('State before move', game.is_valid ? 'Valid' : 'Invalid');
         x.current_ply = game.plys[game.plys.length-1];
         game.insert_ply(
           q.move,
@@ -146,9 +150,8 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
           Math.floor(game.plys.length/2) + 1,
           game.plys.length%2+1
         );
-        // x.last(false, true);
         x.validate(game);
-        // console.log('State after move', game.is_valid ? 'Valid' : 'Invalid');
+
         console.log(game.print_text());
         if (!game.is_valid) {
           console.log(game.print_text());
@@ -165,9 +168,10 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
       .catch(function (error) {
         console.log('ERROR for ' + q.username + ': ', error);
       });
-    })
-    // ws.send('ho!')
-  })
+    }
+  );
+
+
   app.get('/getgame',
   ensureLoggedIn('/login') ,
   function(req, res) {
