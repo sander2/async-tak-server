@@ -10,6 +10,7 @@ var passport = require('passport');
 var Strategy = require('passport-local').Strategy;
 var bodyParser = require('body-parser');
 var ensureLoggedIn = require('connect-ensure-login').ensureLoggedIn;
+var _ = require('lodash');
 
 var cn = {
   host: 'localhost', // 'localhost' is the default
@@ -98,30 +99,25 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   //   res.redirect('/index.html');
   // })
   app.ws('/mysocket',
-  ensureLoggedIn('/login'),
+  // ensureLoggedIn('/login'),
    function(ws, req) {
-    console.log("Connection! authenticated = " + req.isAuthenticated());
-    
+    ws.on('close', function() {
+      console.log('The connection was closed!');
+    });
+    ws.on('error', function() {
+      console.log('The connection was errored!');
+    });
+    if (!req.isAuthenticated()) {
+      console.log("Dropping unauthenticated websocket!");
+      // ws.send('Not authenticated!', 401);
+      ws.close(1008); // Policy Violation error code
+      return;
+    }
     ws.on('message', function(message) {
-      console.log(`Received message => ${message}`);
+      console.log(`Received message from ${req.user}: ${message}`);
       var q = JSON.parse(message);
       
-      // authenticate user
-      db.one('SELECT * from login where username = $1', q.username)
-      .then(function (logindata) {
-        console.log('DATA:', logindata.passhash)
-        return bcrypt.compare(q.password, logindata.passhash);
-      })
-      .then(function (res) {
-        if (!res) {
-          throw "Invalid password";
-        }
-        // db.one('insert into games (player1, player2, active_player, ptn) values ($1, $2, $3, $4)', ["henk", "piet", "henk", '[Date "2019.05.20"]\n[Player1 "henk"]\n[Player2 "piet"]\n[Size "6"]\n[Result ""]\n\n1. a6 a6\n'])
-        // .catch(function (error) {
-        //   console.log('ERRORz for ' + q.username + ': ', error);
-        // });
-        return db.one('SELECT * FROM games WHERE active_player=$1 AND gameID=$2', [q.username, q.gameID]);
-      })
+      db.one('SELECT * FROM games WHERE active_player=$1 AND gameID=$2', [req.user, q.gameID])
       .then(function (gamedata) {
         var x = new Board();
         global.app = x;
@@ -154,11 +150,16 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
         console.log('ERROR for ' + q.username + ': ', error);
       });
     })
-    ws.send('ho!')
+    // ws.send('ho!')
   })
-  app.get('/bka',
+  app.get('/getgame',
+  ensureLoggedIn('/login') ,
   function(req, res) {
-    res.send("authenticated = " + req.isAuthenticated());
+    console.log(`getgame for ${req.user} with id ${req.query.id}`);
+    db.one('SELECT * FROM games WHERE (active_player=$1 OR active_player=$1) AND gameID=$2', [req.user, req.query.id])
+    .then(function (gamedata) {
+      res.send(JSON.stringify({ptn: gamedata.ptn}));
+    });
   });
 
   app.get('/error', (req, res) => {
@@ -176,7 +177,7 @@ app.post('/login23',
 passport.authenticate('local', { failureRedirect: '/error' }),
   function(req, res) {
     var adasd = req.body;
-    res.redirect('/index.html');
+    res.redirect('/games');
   });
 
   // app.post('/login23', function(req, res, next) {
@@ -220,14 +221,48 @@ app.get('/profile',
     res.send("Great success!");
     // res.render('profile', { user: req.user });
 });
+app.get('/games',
+  ensureLoggedIn('/login') ,
+  function(req, res){
+    var overall_template = _.template(
+      '<!DOCTYPE html>' +
+      '<html>' +
+      '<head>' +
+      '<title>Game overview</title>' +
+      '</head>' +
+      '<body>' +
+      '<h1>Game overview</h1>' +
+      '<p>Your turn:</p>' +
+      '<%= yourturn %>' +
+      '<p>Opponent\'s turn:</p>' +
+      '<%= theirturn %>' +
+      '</body>' +
+      '</html>'
+    );
+    var item_template = _.template('<a href="/index.html?gameid=<%= linkid %>">Versus <%= name %></a>');
+    db.any('SELECT * FROM games WHERE player1=$1 OR player2=$1', req.user)
+    .then(function (gamedata) {
+      var tq = _.groupBy(gamedata, x => x.active_player == req.user);
+      var fn = y => _
+        .chain(y)
+        .map(x => item_template({linkid: x.gameid, name: x.player1 == req.user ? x.player2 : x.player1}))
+        .join('\n\n')
+        .value();
+      
+      
+      var result = overall_template({yourturn: fn(tq[true]), theirturn: fn(tq[false])});
+      res.send(result);
+    });
 
+  // res.render('profile', { user: req.user });
+});
 app.get(/^(.+)$/, 
   ensureLoggedIn('/login') ,
   function(req, res)
 { 
-  console.log('static file request : ' + req.params);
+  // console.log('static file request : ' + req.params);
   var f = '/home/sander/workspace/tak-async/PTN-Ninja/' + req.params[0];
-  console.log('Serving' + f);
+  // console.log('Serving' + f);
   res.sendfile(f); 
 });
 
