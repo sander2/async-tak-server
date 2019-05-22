@@ -102,11 +102,17 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   //   // res.send('Hello World!')
   //   res.redirect('/index.html');
   // })
+
+  var allSockets = [];
+
   app.ws('/mysocket',
   // ensureLoggedIn('/login'),
    function(ws, req) {
+    ws.user = req.user;
+    allSockets.push(ws);
     ws.on('close', function() {
       console.log('The connection was closed!');
+      allSockets.splice(allSockets.findIndex(x => x == ws));
     });
     ws.on('error', function() {
       console.log('The connection was errored!');
@@ -149,6 +155,11 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
           throw 'Invalid move attempt';
         }
         var next_player = game.plys.length % 2 == 0 ? gamedata.player1 : gamedata.player2;
+        var opponent = gamedata.player1 != req.user ? gamedata.player1 : gamedata.player2;
+        var other = allSockets.find(x => x.user == opponent);
+        if (!_.isUndefined(other)) {
+          other.send("Notification!!!");
+        }
         return db.none('UPDATE games set ptn=$1, active_player=$2 where gameID=$3', [game.print_text(), next_player, q.gameID]);
       })
       .catch(function (error) {
