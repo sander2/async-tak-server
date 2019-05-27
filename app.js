@@ -9,6 +9,7 @@ var Strategy = require('passport-local').Strategy;
 var bodyParser = require('body-parser');
 var ensureLoggedIn = require('connect-ensure-login').ensureLoggedIn;
 var _ = require('lodash');
+var moment = require('moment');
 
 const port = 3000;
 const ptn_ninja_path = require('os').homedir() + '/workspace/tak-async/PTN-Ninja/';
@@ -127,7 +128,7 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
         var opponent    = gamedata.player1 != req.user ? gamedata.player1 : gamedata.player2;
 
         // update the ptn in the database
-        var ret = db.none('UPDATE games set ptn=$1, active_player=$2 where gameID=$3', [game.print_text(), next_player, body.gameID]);
+        var ret = db.none('UPDATE games set ptn=$1, active_player=$2, last_move_timestamp=$3 where gameID=$4', [game.print_text(), next_player, moment(new Date()).format('YYYY-MM-DD HH:mm:ss'), body.gameID]);
 
         // send notification to the opponent
         var other = allSockets.find(x => x.user == opponent);
@@ -187,17 +188,38 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
       '<html>' +
       '<head>' +
       '<title>Game overview</title>' +
+      '<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">' +
+      '<link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.orange-red.min.css"></link>' +
       '</head>' +
       '<body>' +
+      '<style>' +
+      '.game-list {' +
+      '  width: 300px;' +
+      '}' +
+      '</style>' +
       '<h1>Game overview</h1>' +
       '<p>Your turn:</p>' +
+      '<ul class="game-list mdl-list">' +
       '<%= yourturn %>' +
+      '</ul>' +
       '<p>Opponent\'s turn:</p>' +
+      '<ul class="game-list mdl-list">' +
       '<%= theirturn %>' +
+      '</ul>' +
       '</body>' +
       '</html>'
     );
-    var item_template = _.template('<a href="/index.html?gameid=<%= linkid %>">Versus <%= name %></a>');
+    var item_template = _.template(    
+      '<li onClick="window.location.href = \'/index.html?gameid=<%= linkid %>\'" class="mdl-list__item mdl-list__item--two-line">' +
+      '  <span class="mdl-list__item-primary-content">' +
+      '    <i class="material-icons mdl-list__item-avatar">person</i>' +
+      '    <span>Versus <%= name %></span>' +
+      '    <span class="mdl-list__item-sub-title">Game started <%= creation_date %></span>' +
+      '  </span>' +
+      '  <span class="mdl-list__item-secondary-info"><%= time_since_move %></span>' +
+      '</li>');
+  
+  // ' +'<a href="/index.html?gameid=<%= linkid %>">Versus <%= name %></a>');
 
     // get a list of the user's games and return them
     db.any('SELECT * FROM games WHERE player1=$1 OR player2=$1', req.user)
@@ -206,7 +228,12 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
       var grouped = _.groupBy(gamedata, x => x.active_player == req.user);
       var fn = y => _
         .chain(y)
-        .map(x => item_template({linkid: x.gameid, name: x.player1 == req.user ? x.player2 : x.player1}))
+        .map(x => item_template({
+          linkid: x.gameid, 
+          name: x.player1 == req.user ? x.player2 : x.player1,
+          creation_date: x.creation_timestamp.toUTCString(),
+          time_since_move: Math.floor((new Date().getTime() - x.last_move_timestamp) / (1000 * 3600)) + 'h'
+        }))
         .join('\n\n')
         .value();
       
