@@ -104,6 +104,12 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
     }
   });
 
+  app.get('/',
+  ensureLoggedIn('/login') ,
+  function(req, res) {
+    console.log("redirecting root");
+    res.redirect('/games'); // executed iff login was succesful
+  });
 
   // handle POST request that submits a move
   app.post('/domove',
@@ -201,7 +207,7 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
       '<head>' +
       '<title>Game overview</title>' +
       '<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">' +
-      '<link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.orange-red.min.css"></link>' +
+      '<link rel="stylesheet" href="/css/material.css"></link>' +
       '</head>' +
       '<body>' +
       '<style>' +
@@ -222,7 +228,7 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
       '</html>'
     );
     var item_template = _.template(    
-      '<li onClick="window.location.href = \'/index.html?gameid=<%= linkid %>\'" class="mdl-list__item mdl-list__item--two-line">' +
+      '<li onClick="window.location.href = \'/index.html?gameid=<%= linkid %>&color=<%= color %>\'" class="mdl-list__item mdl-list__item--two-line">' +
       '  <span class="mdl-list__item-primary-content">' +
       '    <i class="material-icons mdl-list__item-avatar">person</i>' +
       '    <span>Versus <%= name %></span>' +
@@ -244,7 +250,8 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
           linkid: x.gameid, 
           name: x.player1 == req.user ? x.player2 : x.player1,
           creation_date: x.creation_timestamp.toUTCString(),
-          time_since_move: Math.floor((new Date().getTime() - x.last_move_timestamp) / (1000 * 3600)) + 'h'
+          time_since_move: Math.floor((new Date().getTime() - x.last_move_timestamp) / (1000 * 3600)) + 'h',
+          color: req.user == x.player1 ? 'white' : 'black',
         }))
         .join('\n\n')
         .value();
@@ -265,15 +272,21 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
 
   // Serve all files used by ptn-ninja
   app.get(/^(.+)$/, 
-  ensureLoggedIn('/login') ,
+  // ensureLoggedIn('/login') ,
   function(req, res)
   { 
-    console.log("serving", req.params[0]);
-    var f = ptn_ninja_path + req.params[0];
-    res.sendFile(f); 
+    if (!req.isAuthenticated()) {
+      console.log("Dropping unauthenticated websocket!");
+      res.status(403).send('403: Forbidden');
+    } else {
+      console.log("serving", req.params[0]);
+      var f = ptn_ninja_path + req.params[0];
+      res.sendFile(f); 
+    }
   });
 
-  // app.listen(port, () => console.log(`App listening on port ${port}!`));
+  app.listen(port, () => console.log(`App listening on port ${port}!`));
   httpsServer.listen(443);
+  // httpsServer.listen(80);
 });
 
