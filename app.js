@@ -1,6 +1,12 @@
+const { readFileSync } = require('fs')
 const express = require('express')
 const app = express()
-var expressWs = require('express-ws')(app);
+var https = require('https');
+var httpsServer = https.createServer({
+  key: readFileSync(`${__dirname}/tls/key.pem`),
+  cert: readFileSync(`${__dirname}/tls/cert.pem`)
+},app)
+var expressWs = require('express-ws')(app, httpsServer);
 var bcrypt = require('bcryptjs');
 var requirejs = require('requirejs');
 var pgp = require('pg-promise')()
@@ -10,9 +16,12 @@ var bodyParser = require('body-parser');
 var ensureLoggedIn = require('connect-ensure-login').ensureLoggedIn;
 var _ = require('lodash');
 var moment = require('moment');
+var redirectToHTTPS = require('express-http-to-https').redirectToHTTPS
 
-const port = 3000;
-const ptn_ninja_path = require('os').homedir() + '/workspace/tak-async/PTN-Ninja/';
+
+
+const port = 80;
+const ptn_ninja_path = '/root/tak-async/PTN-Ninja/';
 
 // Load PTN module
 requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], function(Game, Board, Move) {
@@ -23,7 +32,11 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
     user: 'takserver3',
     password: 'defaultpass'
   });
+
+  // make sure https is used. Except on localhost, or for let's encrypt verification
+  app.use(redirectToHTTPS([/localhost:(\d{4})/], [/^(\/.well-known\/.+)$/], 301));
   
+
   // setup user verification
   passport.use(new Strategy(
     function(username, password, done) {
@@ -131,10 +144,8 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
         var ret = db.none('UPDATE games set ptn=$1, active_player=$2, last_move_timestamp=$3 where gameID=$4', [game.print_text(), next_player, moment(new Date()).format('YYYY-MM-DD HH:mm:ss'), body.gameID]);
 
         // send notification to the opponent
-        var other = allSockets.find(x => x.user == opponent);
-        if (!_.isUndefined(other)) {
-          other.send(JSON.stringify({opponent:thisplayer, gameID:body.gameID}));
-        }
+        allSockets.filter(x => x.user == opponent).forEach(x => {x.send(JSON.stringify({opponent:thisplayer, gameID:body.gameID}))});
+
         return ret;
       })
       .catch(function (error) {
@@ -149,6 +160,7 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   function(req, res) {
     db.one('SELECT * FROM games WHERE (player1=$1 OR player2=$1) AND gameID=$2', [req.user, req.query.id])
     .then(function (gamedata) {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
       res.send(JSON.stringify({ptn: gamedata.ptn}));
     });
   });
@@ -242,14 +254,26 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
     });
   });
 
-  // Serve all files used by ptn-ninja
-  app.get(/^(.+)$/, 
-  ensureLoggedIn('/login') ,
+
+  // Serve files required by let's encrypt
+  app.get(/^(\/.well-known\/.+)$/, 
   function(req, res)
   { 
     var f = ptn_ninja_path + req.params[0];
     res.sendfile(f); 
   });
 
-  app.listen(port, () => console.log(`App listening on port ${port}!`));
+  // Serve all files used by ptn-ninja
+  app.get(/^(.+)$/, 
+  ensureLoggedIn('/login') ,
+  function(req, res)
+  { 
+    console.log("serving", req.params[0]);
+    var f = ptn_ninja_path + req.params[0];
+    res.sendFile(f); 
+  });
+
+  // app.listen(port, () => console.log(`App listening on port ${port}!`));
+  httpsServer.listen(443);
 });
+
