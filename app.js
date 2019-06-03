@@ -325,14 +325,14 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   // ensureLoggedIn('/login') ,
   function(req, res)
   { 
-    if (!req.isAuthenticated()) {
-      console.log("Dropping unauthenticated websocket!");
-      res.status(403).send('403: Forbidden');
-    } else {
+    // if (!req.isAuthenticated()) {
+    //   console.log("Dropping unauthenticated websocket!");
+    //   res.status(403).send('403: Forbidden');
+    // } else {
       console.log("serving", req.params[0]);
       var f = ptn_ninja_path + req.params[0];
       res.sendFile(f); 
-    }
+    // }
   });
 
   app.listen(port, () => console.log(`App listening on port ${port}!`));
