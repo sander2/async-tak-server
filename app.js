@@ -261,6 +261,56 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
     });
   });
 
+  // Get the game overview page
+  app.get('/gamesinline',
+  ensureLoggedIn('/login') ,
+  function(req, res){
+    var overall_template = _.template(
+      '<div>' +
+      '<p>Your turn:</p>' +
+      '<ul class="game-list mdl-list">' +
+      '<%= yourturn %>' +
+      '</ul>' +
+      '<p>Opponent\'s turn:</p>' +
+      '<ul class="game-list mdl-list">' +
+      '<%= theirturn %>' +
+      '</ul>' +
+      '</div>'
+    );
+    var item_template = _.template(    
+      '<li gameid="<%= linkid %>" playerColor=<%= color %> class="mdl-list__item mdl-list__item--two-line game-selector">' +
+      '  <span class="mdl-list__item-primary-content">' +
+      '    <i class="material-icons mdl-list__item-avatar">person</i>' +
+      '    <span>Versus <%= name %></span>' +
+      '    <span class="mdl-list__item-sub-title">Game started <%= creation_date %></span>' +
+      '  </span>' +
+      '  <span class="mdl-list__item-secondary-info"><%= time_since_move %></span>' +
+      '</li>');
+  
+  // ' +'<a href="/index.html?gameid=<%= linkid %>">Versus <%= name %></a>');
+
+    // get a list of the user's games and return them
+    db.any('SELECT * FROM games WHERE player1=$1 OR player2=$1', req.user)
+    .then(function (gamedata) {
+      // group the games by whether it's player's turn or their opponent's 
+      var grouped = _.groupBy(gamedata, x => x.active_player == req.user);
+      var fn = y => _
+        .chain(y)
+        .map(x => item_template({
+          linkid: x.gameid, 
+          name: x.player1 == req.user ? x.player2 : x.player1,
+          creation_date: x.creation_timestamp.toUTCString(),
+          time_since_move: Math.floor((new Date().getTime() - x.last_move_timestamp) / (1000 * 3600)) + 'h',
+          color: req.user == x.player1 ? 'white' : 'black',
+        }))
+        .join('\n\n')
+        .value();
+      
+      var result = overall_template({yourturn: fn(grouped[true]), theirturn: fn(grouped[false])});
+      res.send(result);
+    });
+  });
+
 
   // Serve files required by let's encrypt
   app.get(/^(\/.well-known\/.+)$/, 
