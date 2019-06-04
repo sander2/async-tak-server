@@ -111,6 +111,36 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
     res.redirect('/games'); // executed iff login was succesful
   });
 
+  app.post('/invite',
+  ensureLoggedIn('/login'),
+  function(req, res) {
+    db.none('SELECT * FROM invitations WHERE player1=$1 AND player2=$2', [req.user, req.body.opponent])
+    .then(() => db.none('INSERT INTO invitations VALUES($1, $2, $3, $4)', [
+      req.user, 
+      req.body.opponent, 
+      req.body.board_size, 
+      moment(new Date()).format('YYYY-MM-DD HH:mm:ss')]))
+    .catch(err => console.log('Failed to store invitation:', err));
+  });
+  app.post('/acceptinvite',
+  ensureLoggedIn('/login'),
+  function(req, res) {
+    var now = moment(new Date()).format('YYYY-MM-DD HH:mm:ss');
+    db.one('SELECT * FROM invitations WHERE player2=$1 AND id=$2', [req.user, req.body.invitationid])
+    .then(invitation => {
+      if (req.body.accept != false) {
+        return db.none('insert into games (player1, player2, active_player, ptn, creation_timestamp, last_move_timestamp) values ($1, $2, $3, $4, $5, $6)', [
+          invitation.player1, 
+          invitation.player2, 
+          invitation.player1, 
+          `[Player1 "${invitation.player1}"]\n[Player2 "${invitation.player2}"]\n[Size "${invitation.board_size}"]\n[Result ""]\n`,
+          now,
+          now])
+        }
+    })
+    .then(() => db.any('DELETE FROM invitations WHERE player2=$1 AND id=$2', [req.user, req.body.invitationid]))
+    .catch(err => console.log('Failed to store invitation:', err));
+  });
   // handle POST request that submits a move
   app.post('/domove',
     ensureLoggedIn('/login'),
@@ -275,6 +305,10 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
       '<ul class="game-list mdl-list">' +
       '<%= theirturn %>' +
       '</ul>' +
+      '<p>Invitations:</p>' +
+      '<ul class="mdl-list">' +
+      '<%= invites %>' +
+      '</ul>' +
       '</div>'
     );
     var item_template = _.template(    
@@ -285,6 +319,20 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
       '    <span class="mdl-list__item-sub-title">Game started <%= creation_date %></span>' +
       '  </span>' +
       '  <span class="mdl-list__item-secondary-info"><%= time_since_move %></span>' +
+      '</li>');
+    var invite_template = _.template(    
+      '<li invitationid="<%= invitationid %>" class="mdl-list__item mdl-list__item--two-line">' +
+      '  <span class="mdl-list__item-primary-content">' +
+      '    <i class="material-icons mdl-list__item-avatar">person</i>' +
+      '    <span>Versus <%= opponent %></span>' +
+      '    <span class="mdl-list__item-sub-title">Board size <%= board_size %>x<%= board_size %>; invited <%= time_since_invite %> ago</span>' +
+      '  </span>' +
+      '<span class="mdl-list__item-secondary-content">' + 
+      '  <a class="mdl-list__item-secondary-action" href="#"><i class="material-icons invitation-btn" >clear</i></a>' + 
+      '</span>' + 
+      '<span class="mdl-list__item-secondary-content">' + 
+      '  <a class="mdl-list__item-secondary-action" href="#"><i class="material-icons invitation-btn" accept="">done</i></a>' + 
+      '</span>' + 
       '</li>');
   
   // ' +'<a href="/index.html?gameid=<%= linkid %>">Versus <%= name %></a>');
@@ -306,8 +354,22 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
         .join('\n\n')
         .value();
       
-      var result = overall_template({yourturn: fn(grouped[true]), theirturn: fn(grouped[false])});
-      res.send(result);
+      db.any('SELECT * FROM invitations WHERE player2=$1', req.user)
+      .then(function (invites) {
+        var q = _.chain(invites)
+        .map(x => invite_template({
+          opponent: x.player1,
+          date: x.date,
+          time_since_invite: Math.floor((new Date().getTime() - x.date) / (1000 * 3600)) + 'h',
+          board_size: x.board_size,
+          invitationid: x.id
+        }))
+        .join('\n\n')
+        .value();
+        var result = overall_template({yourturn: fn(grouped[true]), theirturn: fn(grouped[false]), invites:q});
+        res.send(result);        
+      });
+
     });
   });
 
