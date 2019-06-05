@@ -108,7 +108,7 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   ensureLoggedIn('/login') ,
   function(req, res) {
     console.log("redirecting root");
-    res.redirect('/games'); // executed iff login was succesful
+    res.redirect('/index.html'); // executed iff login was succesful
   });
 
   app.post('/invite',
@@ -180,7 +180,9 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
         var ret = db.none('UPDATE games set ptn=$1, active_player=$2, last_move_timestamp=$3 where gameID=$4', [game.print_text(), next_player, moment(new Date()).format('YYYY-MM-DD HH:mm:ss'), body.gameID]);
 
         // send notification to the opponent
+        console.log(`${allSockets.length} sockets open. Notifying ${allSockets.filter(x => x.user == opponent).length}`);
         allSockets.filter(x => x.user == opponent).forEach(x => {x.send(JSON.stringify({opponent:thisplayer, gameID:body.gameID}))});
+        console.log('Finished notifications');
 
         return ret;
       })
@@ -212,7 +214,7 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
   app.post('/dologin', 
   passport.authenticate('local', { failureRedirect: '/error' }),
   function(req, res) {
-    res.redirect('/games'); // executed iff login was succesful
+    res.redirect('/index.html'); // executed iff login was succesful
   });
 
   // login failure page
@@ -396,6 +398,10 @@ requirejs(["ptn/js/app/game", "ptn/js/app/board", "ptn/js/app/game/move"], funct
       res.sendFile(f); 
     // }
   });
+
+  // bcrypt.hash('some-pass', 10, function(err, hash) {
+  //   db.none('INSERT INTO login (username, passhash) VALUES ($1, $2)', ['somename', hash]);
+  // })
 
   app.listen(port, () => console.log(`App listening on port ${port}!`));
   httpsServer.listen(443);
